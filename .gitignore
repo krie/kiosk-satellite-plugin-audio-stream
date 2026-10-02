@@ -4,6 +4,7 @@ __pycache__/
 
 .claude/
 .vscode/
+.idea/
 .codex/
 .remember/
 .playwright-mcp/

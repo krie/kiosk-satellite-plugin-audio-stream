@@ -11,7 +11,7 @@ class BuildManifestTest(unittest.TestCase):
     def test_release_version_overrides_source_without_editing_it(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'kiosk-satellite-plugin.json'
-            original = b'{"id":"demo","version":"1.0.1","apiVersion":1,"description":"Demo","settings":[]}'
+            original = b'{"id":"test-plugin","version":"1.0.1","apiVersion":1,"description":"Test plugin","settings":[]}'
             path.write_bytes(original)
             self.assertEqual(build_manifest(path), original)
             release = json.loads(build_manifest(path, '1.2.0'))

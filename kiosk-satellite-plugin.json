@@ -1,241 +1,51 @@
 {
   "schemaVersion": 1,
-  "id": "hello-world",
-  "name": "Hello World",
-  "version": "1.0.1",
+  "id": "audio-stream",
+  "name": "Audio Stream",
+  "version": "1.0.0",
   "apiVersion": 1,
   "minAndroidSdk": 24,
-  "entryClass": "me.jxl.kiosk.plugins.hello.HelloWorldPlugin",
-  "description": "A sample plugin that showcases the SDK capabilities. Use this plugin as a starting point for your own.",
-  "author": "Kiosk Satellite contributors",
+  "entryClass": "io.github.krie.kiosk.plugins.audiostream.AudioStreamPlugin",
+  "description": "Streams Android microphone audio as AAC/ADTS over HTTP.",
+  "author": "krie",
   "license": "Apache-2.0",
   "capabilities": [
-    "overlay",
     "entities",
-    "shizuku",
-    "screensaver",
     "host.read"
   ],
   "settings": [
     {
-      "key": "message",
+      "key": "port",
       "type": "string",
-      "title": "Greeting",
-      "default": "Hello from a Kiosk Satellite plugin!",
-      "group": "Greeting window",
-      "description": "Text input: the message in the floating window."
+      "title": "HTTP port",
+      "default": "58585",
+      "group": "Audio stream",
+      "description": "TCP port for the AAC/ADTS stream (1024-65535). The stream path is /audio.aac."
     },
     {
-      "key": "showOnStart",
-      "type": "boolean",
-      "title": "Show window when enabled",
-      "default": true,
-      "group": "Greeting window",
-      "description": "Toggle: open the floating window when the plugin starts."
-    },
-    {
-      "key": "showChart",
-      "type": "boolean",
-      "title": "Show demo chart",
-      "default": true,
-      "group": "Chart demo",
-      "description": "Display simulated data in the plugin subpage."
-    },
-    {
-      "key": "chartType",
-      "type": "select",
-      "title": "Chart type",
-      "default": "Line",
-      "options": [
-        "Line",
-        "Bar"
-      ],
-      "group": "Chart demo",
-      "description": "Display samples as lines or grouped bars."
-    },
-    {
-      "key": "chartSize",
-      "type": "select",
-      "title": "Chart size",
-      "default": "Regular",
-      "options": [
-        "Regular",
-        "Mini"
-      ],
-      "group": "Chart demo",
-      "description": "Use a full chart with axes or a compact mini chart."
-    },
-    {
-      "key": "amplitude",
+      "key": "gainDb",
       "type": "number",
-      "title": "Amplitude",
-      "default": 60,
-      "min": 0,
-      "max": 100,
-      "step": 5,
-      "unit": "%",
-      "group": "Chart demo",
-      "description": "Slider: adjust the height of new simulated samples."
-    },
-    {
-      "key": "pattern",
-      "type": "select",
-      "title": "Pattern",
-      "default": "Sine",
-      "options": [
-        "Sine",
-        "Triangle"
-      ],
-      "group": "Chart demo",
-      "description": "Selection: choose the shape of new simulated samples."
-    },
-    {
-      "key": "seriesColor",
-      "type": "color",
-      "title": "Series color",
-      "default": "#1976D2",
-      "group": "Chart demo",
-      "description": "Color picker: set the Wave series color."
-    },
-    {
-      "key": "shizukuDemo",
-      "type": "boolean",
-      "title": "Enable Shizuku demo",
-      "default": false,
-      "group": "Shizuku demo",
-      "description": "Read a device diagnostic through Shizuku every 10 seconds. Results appear in Readings."
-    },
-    {
-      "key": "shizukuDiagnostic",
-      "type": "select",
-      "title": "Diagnostic",
-      "default": "Process identity",
-      "options": [
-        "Process identity",
-        "Android version",
-        "Kernel version"
-      ],
-      "group": "Shizuku demo",
-      "description": "Choose the read-only command to run after granting Shizuku access."
-    },
-    {
-      "key": "showStatusTile",
-      "type": "boolean",
-      "title": "Show status tile",
-      "default": true,
-      "group": "Status tile demo",
-      "description": "Toggle: publish a Hello World tile on the Remote Admin Overview Status panel."
-    },
-    {
-      "key": "statusLevel",
-      "type": "select",
-      "title": "Tile level",
-      "default": "Healthy",
-      "options": [
-        "Healthy",
-        "Attention",
-        "Problem",
-        "Muted"
-      ],
-      "group": "Status tile demo",
-      "description": "Selection: the dot color. Healthy is green, Attention amber, Problem red and Muted gray."
-    },
-    {
-      "key": "statusText",
-      "type": "string",
-      "title": "Tile text",
-      "default": "Simulated data flowing",
-      "group": "Status tile demo",
-      "description": "Text input: the one-line state under the tile title, up to 80 characters."
-    },
-    {
-      "key": "dvdLogoSize",
-      "type": "number",
-      "title": "Logo size",
-      "default": 100,
-      "min": 50,
-      "max": 200,
-      "step": 5,
-      "unit": "%",
-      "group": "Screensaver demo",
-      "description": "Resize the bouncing DVD logo. 100% uses the original size."
-    },
-    {
-      "key": "dvdLogoColor",
-      "type": "color",
-      "title": "Logo color",
-      "default": "#00D4FF",
-      "group": "Screensaver demo",
-      "description": "DVD logo color. Select DVD Logo (Hello World) in Screensaver mode to use this demo."
-    },
-    {
-      "key": "dvdBackgroundColor",
-      "type": "color",
-      "title": "Background color",
-      "default": "#000000",
-      "group": "Screensaver demo",
-      "description": "Background behind the bouncing logo. Uses all stock screensaver settings."
-    },
-    {
-      "key": "haEntity",
-      "type": "entity",
-      "title": "Home Assistant entity",
-      "default": "",
-      "group": "Home Assistant demo",
-      "description": "Choose an entity to show its state and follow changes through Kiosk Satellite."
+      "title": "Input gain",
+      "default": 0,
+      "min": -12,
+      "max": 24,
+      "step": 1,
+      "group": "Audio stream",
+      "description": "Digital microphone gain before AAC encoding. 0 dB leaves the signal unchanged; +6 dB is about 2x amplitude. High values can clip."
     }
   ],
-  "commands": [
-    {
-      "id": "show",
-      "title": "Show window"
-    },
-    {
-      "id": "hide",
-      "title": "Hide window"
-    }
-  ],
+  "commands": [],
   "groups": [
     {
-      "title": "Greeting window"
-    },
-    {
-      "title": "Chart demo",
-      "charts": [
-        "demo"
-      ],
-      "readingsTitle": "Chart readings",
+      "title": "Audio stream",
+      "readingsTitle": "Status",
       "readings": [
-        "sensor.wave",
-        "text_sensor.status",
-        "binary_sensor.chart_active",
-        "switch.chart",
-        "select.pattern",
-        "sensor.samples",
-        "text_sensor.summary"
+        "binary_sensor.audio_active",
+        "sensor.clients",
+        "sensor.input_gain",
+        "text_sensor.stream_status",
+        "text_sensor.endpoint"
       ]
-    },
-    {
-      "title": "Home Assistant demo",
-      "readingsTitle": "Home Assistant readings",
-      "readings": [
-        "text_sensor.ha_state",
-        "text_sensor.ha_details"
-      ]
-    },
-    {
-      "title": "Shizuku demo",
-      "readingsTitle": "Shizuku readings",
-      "readings": [
-        "text_sensor.shizuku_status",
-        "text_sensor.shizuku_output"
-      ]
-    },
-    {
-      "title": "Status tile demo"
-    },
-    {
-      "title": "Screensaver demo"
     }
   ]
 }

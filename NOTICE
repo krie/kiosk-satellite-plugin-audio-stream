@@ -1,0 +1,6 @@
+Kiosk Satellite Audio Stream
+Copyright 2026 krie
+
+This project includes Kiosk Satellite Plugin SDK 1 interfaces and build tooling
+derived from the official Kiosk Satellite Hello World plugin template. The
+template is licensed under the Apache License 2.0 included in this repository.
