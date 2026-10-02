@@ -20,6 +20,7 @@ final class AacEncoder implements AutoCloseable {
     private static final int SAMPLE_RATE = AudioCapture.SAMPLE_RATE;
     private static final int CHANNELS = AudioCapture.CHANNELS;
     private static final int BIT_RATE = 32000;
+    // Live audio should skip stale PCM rather than build an audible delay.
     private static final int QUEUE_CAPACITY = 8;
 
     private static final class Chunk {
@@ -151,7 +152,7 @@ final class AacEncoder implements AutoCloseable {
                 }
             }
         } catch (Throwable t) {
-            if (running) error = rootMessage(t);
+            if (running) error = FailureMessages.rootCause(t);
         } finally {
             running = false;
             queue.clear();
@@ -177,12 +178,4 @@ final class AacEncoder implements AutoCloseable {
         if (thread != null) thread.interrupt();
     }
 
-    private static String rootMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current.getCause() != null && current.getCause() != current)
-            current = current.getCause();
-        String message = current.getMessage();
-        return current.getClass().getSimpleName()
-                + (message == null || message.isEmpty() ? "" : ": " + message);
-    }
 }

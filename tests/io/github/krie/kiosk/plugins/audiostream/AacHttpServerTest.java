@@ -6,13 +6,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 public final class AacHttpServerTest {
     public static void main(String[] args) throws Exception {
@@ -32,8 +32,7 @@ public final class AacHttpServerTest {
             if (port <= 0) throw new AssertionError("server did not bind a port");
 
             String missing = request(port, "GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n");
-            if (!missing.startsWith("HTTP/1.1 404 Not Found"))
-                throw new AssertionError("404 endpoint failed");
+            assertStatus(missing, "HTTP/1.1 404 Not Found", "404 endpoint failed");
 
             try (Socket socket = new Socket("127.0.0.1", port)) {
                 socket.setSoTimeout(3000);
@@ -43,10 +42,8 @@ public final class AacHttpServerTest {
 
                 InputStream in = socket.getInputStream();
                 String headers = readHeaders(in);
-                if (!headers.startsWith("HTTP/1.1 200 OK"))
-                    throw new AssertionError("stream endpoint failed");
-                if (!headers.contains("Content-Type: audio/aac"))
-                    throw new AssertionError("wrong content type");
+                assertStatus(headers, "HTTP/1.1 200 OK", "stream endpoint failed");
+                assertContains(headers, "Content-Type: audio/aac", "wrong content type");
 
                 long deadline = System.nanoTime() + 2_000_000_000L;
                 while (server.clientCount() != 1 && System.nanoTime() < deadline) Thread.sleep(10);
@@ -85,8 +82,8 @@ public final class AacHttpServerTest {
                 if (server.connectionCount() != 0 || server.clientCount() != 0)
                     throw new AssertionError("closed connections survived restart");
                 String head = request(server.port(), "HEAD /audio.aac HTTP/1.1\r\n\r\n");
-                if (!head.startsWith("HTTP/1.1 200 OK") || !head.endsWith("\r\n\r\n"))
-                    throw new AssertionError("HEAD request after restart failed");
+                assertStatus(head, "HTTP/1.1 200 OK", "HEAD request after restart failed");
+                assertEndsWith(head, "\r\n\r\n", "HEAD response must not include a body");
             }
         }
     }
@@ -117,8 +114,7 @@ public final class AacHttpServerTest {
                 await(() -> server.connectionCount() == AacHttpServer.MAX_CONNECTIONS - 1,
                         "disconnected request did not release its slot");
                 String response = request(server.port(), "HEAD /audio.aac HTTP/1.1\r\n\r\n");
-                if (!response.startsWith("HTTP/1.1 200 OK"))
-                    throw new AssertionError("released connection slot was not reusable");
+                assertStatus(response, "HTTP/1.1 200 OK", "released connection slot was not reusable");
                 server.close();
                 for (Socket socket : sockets) {
                     if (!socket.isClosed()) assertClosed(socket);
@@ -143,8 +139,11 @@ public final class AacHttpServerTest {
                 socket.getOutputStream().write(oversized);
                 socket.getOutputStream().flush();
                 String headers = readHeaders(socket.getInputStream());
-                if (!headers.startsWith("HTTP/1.1 431 Request Header Fields Too Large"))
-                    throw new AssertionError("oversized header was not rejected");
+                assertStatus(
+                        headers,
+                        "HTTP/1.1 431 Request Header Fields Too Large",
+                        "oversized header was not rejected"
+                );
             }
             await(() -> server.connectionCount() == 0, "oversized header retained a connection");
             if (server.clientCount() != 0)
@@ -161,8 +160,11 @@ public final class AacHttpServerTest {
                 socket.getOutputStream().flush();
                 socket.getOutputStream().write(valid[valid.length - 1]);
                 socket.getOutputStream().flush();
-                if (!readHeaders(socket.getInputStream()).startsWith("HTTP/1.1 200 OK"))
-                    throw new AssertionError("complete header at byte limit was rejected");
+                assertStatus(
+                        readHeaders(socket.getInputStream()),
+                        "HTTP/1.1 200 OK",
+                        "complete header at byte limit was rejected"
+                );
             }
         }
     }
@@ -235,6 +237,18 @@ public final class AacHttpServerTest {
         } catch (SocketException expected) {
             // A reset is also a closed connection.
         }
+    }
+
+    private static void assertStatus(String response, String expectedStatus, String message) {
+        if (!response.startsWith(expectedStatus)) throw new AssertionError(message);
+    }
+
+    private static void assertContains(String response, String expectedText, String message) {
+        if (!response.contains(expectedText)) throw new AssertionError(message);
+    }
+
+    private static void assertEndsWith(String response, String expectedText, String message) {
+        if (!response.endsWith(expectedText)) throw new AssertionError(message);
     }
 
     private static void await(BooleanSupplier condition, String message) throws Exception {
