@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "audio-stream",
   "name": "Audio Stream",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": 1,
   "minAndroidSdk": 24,
   "entryClass": "io.github.krie.kiosk.plugins.audiostream.AudioStreamPlugin",

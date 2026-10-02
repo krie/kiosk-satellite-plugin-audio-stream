@@ -20,7 +20,9 @@ import java.util.concurrent.TimeUnit;
  * Tiny HTTP server that exposes a live AAC/ADTS stream at /audio.aac.
  */
 final class AacHttpServer implements AutoCloseable {
+    // Keep each client close to live audio when a receiver briefly stalls.
     private static final int CLIENT_QUEUE_FRAMES = 24;
+    // Pending header reads count too, so slow clients cannot exhaust the server.
     static final int MAX_CONNECTIONS = 16;
     static final int MAX_REQUEST_HEADER_BYTES = 8192;
     static final int REQUEST_TIMEOUT_MILLIS = 5000;
@@ -106,7 +108,9 @@ final class AacHttpServer implements AutoCloseable {
                 thread.start();
             } catch (IOException e) {
                 synchronized (this) {
-                    if (running && serverSocket == listener) error = rootMessage(e);
+                    if (running && serverSocket == listener) {
+                        error = FailureMessages.rootCause(e);
+                    }
                 }
             }
         }
@@ -324,13 +328,4 @@ final class AacHttpServer implements AutoCloseable {
         }
     }
 
-    private static String rootMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current.getCause() != null && current.getCause() != current) {
-            current = current.getCause();
-        }
-        String message = current.getMessage();
-        return current.getClass().getSimpleName()
-                + (message == null || message.isEmpty() ? "" : ": " + message);
-    }
 }

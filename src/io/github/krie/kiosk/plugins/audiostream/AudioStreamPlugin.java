@@ -111,12 +111,20 @@ public final class AudioStreamPlugin implements KioskPlugin {
     }
 
     private synchronized void startRuntime() {
+        startEncoder();
+        startCapture();
+        startServer();
+    }
+
+    private void startEncoder() {
         encoder = new AacEncoder(frame -> {
             AacHttpServer current = server;
             if (current != null) current.broadcast(frame);
         });
         encoder.start();
+    }
 
+    private void startCapture() {
         capture = new AudioCapture((pcm, timeUs) -> {
             lastPcmNs = System.nanoTime();
             PcmGain.applyInPlace(pcm, gainLinear);
@@ -127,10 +135,14 @@ public final class AudioStreamPlugin implements KioskPlugin {
         try {
             capture.start();
         } catch (Throwable t) {
-            if (host != null) host.status("Microphone capture failed: " + rootMessage(t), true);
+            PluginHost currentHost = host;
+            if (currentHost != null) {
+                currentHost.status(
+                        "Microphone capture failed: " + FailureMessages.rootCause(t),
+                        true
+                );
+            }
         }
-
-        startServer();
     }
 
     private synchronized void startServer() {
@@ -141,7 +153,13 @@ public final class AudioStreamPlugin implements KioskPlugin {
         } catch (Exception e) {
             next.close();
             server = null;
-            if (host != null) host.status("HTTP server failed: " + rootMessage(e), true);
+            PluginHost currentHost = host;
+            if (currentHost != null) {
+                currentHost.status(
+                        "HTTP server failed: " + FailureMessages.rootCause(e),
+                        true
+                );
+            }
         }
     }
 
@@ -167,61 +185,96 @@ public final class AudioStreamPlugin implements KioskPlugin {
         AacHttpServer currentServer = server;
         if (currentHost == null || currentCapture == null || currentEncoder == null) return;
 
+        RuntimeStatus status = runtimeStatus(currentCapture, currentEncoder, currentServer);
+        publishReadings(currentHost, status);
+    }
+
+    private RuntimeStatus runtimeStatus(
+            AudioCapture currentCapture,
+            AacEncoder currentEncoder,
+            AacHttpServer currentServer
+    ) {
         long ageNs = lastPcmNs == 0 ? Long.MAX_VALUE : System.nanoTime() - lastPcmNs;
         boolean audioActive = currentCapture.isRunning()
                 && ageNs < TimeUnit.SECONDS.toNanos(3);
         int clients = currentServer == null ? 0 : currentServer.clientCount();
 
-        String status;
-        boolean error = false;
         if (currentCapture.error() != null) {
-            status = "Microphone capture failed: " + currentCapture.error();
-            error = true;
-        } else if (!currentCapture.isRunning()) {
-            status = "Microphone capture is not running";
-            error = true;
-        } else if (currentEncoder.error() != null) {
-            status = "AAC encoder failed: " + currentEncoder.error();
-            error = true;
-        } else if (currentServer == null) {
-            status = "HTTP server is not running";
-            error = true;
-        } else if (currentServer.error() != null) {
-            status = "HTTP server error: " + currentServer.error();
-            error = true;
-        } else if (!audioActive) {
-            status = "Microphone is open, waiting for PCM audio";
-        } else {
-            status = "Streaming AAC-LC 48 kHz mono at "
-                    + PluginSettings.formatGain(gainDb)
-                    + "; " + clients + " client" + (clients == 1 ? "" : "s");
+            return RuntimeStatus.error(
+                    "Microphone capture failed: " + currentCapture.error(),
+                    audioActive,
+                    clients
+            );
+        }
+        if (!currentCapture.isRunning()) {
+            return RuntimeStatus.error("Microphone capture is not running", audioActive, clients);
+        }
+        if (currentEncoder.error() != null) {
+            return RuntimeStatus.error(
+                    "AAC encoder failed: " + currentEncoder.error(),
+                    audioActive,
+                    clients
+            );
+        }
+        if (currentServer == null) {
+            return RuntimeStatus.error("HTTP server is not running", audioActive, clients);
+        }
+        if (currentServer.error() != null) {
+            return RuntimeStatus.error(
+                    "HTTP server error: " + currentServer.error(),
+                    audioActive,
+                    clients
+            );
+        }
+        if (!audioActive) {
+            return new RuntimeStatus(
+                    "Microphone is open, waiting for PCM audio",
+                    false,
+                    false,
+                    clients
+            );
         }
 
-        currentHost.status(status, error);
+        return new RuntimeStatus(
+                "Streaming AAC-LC 48 kHz mono at "
+                        + PluginSettings.formatGain(gainDb)
+                        + "; " + clients + " client" + (clients == 1 ? "" : "s"),
+                false,
+                true,
+                clients
+        );
+    }
+
+    private void publishReadings(PluginHost currentHost, RuntimeStatus status) {
+        currentHost.status(status.message, status.error);
         currentHost.publishBinarySensor(
                 "audio_active",
                 "Microphone audio active",
                 "",
-                audioActive
+                status.audioActive
         );
-
-        Map<String, Object> countMetadata = new LinkedHashMap<>();
-        countMetadata.put("accuracyDecimals", 0);
         currentHost.publishSensor(
                 "clients",
                 "Connected stream clients",
-                countMetadata,
-                (double) clients
+                sensorMetadata(null, null),
+                (double) status.clients
         );
-
-        Map<String, Object> gainMetadata = new LinkedHashMap<>();
-        gainMetadata.put("unit", "dB");
-        gainMetadata.put("stateClass", "measurement");
-        gainMetadata.put("accuracyDecimals", 0);
-        currentHost.publishSensor("input_gain", "Input gain", gainMetadata, gainDb);
-
-        currentHost.publishTextSensor("stream_status", "Audio stream status", status);
+        currentHost.publishSensor(
+                "input_gain",
+                "Input gain",
+                sensorMetadata("dB", "measurement"),
+                gainDb
+        );
+        currentHost.publishTextSensor("stream_status", "Audio stream status", status.message);
         publishEndpoint();
+    }
+
+    private static Map<String, Object> sensorMetadata(String unit, String stateClass) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (unit != null) metadata.put("unit", unit);
+        if (stateClass != null) metadata.put("stateClass", stateClass);
+        metadata.put("accuracyDecimals", 0);
+        return metadata;
     }
 
     private void setGainDb(double value) {
@@ -231,34 +284,59 @@ public final class AudioStreamPlugin implements KioskPlugin {
 
     @Override
     public synchronized void stop() {
-        ScheduledExecutorService currentMonitor = monitor;
-        monitor = null;
-        if (currentMonitor != null) currentMonitor.shutdownNow();
-
-        AudioCapture currentCapture = capture;
-        capture = null;
-        if (currentCapture != null) currentCapture.close();
-
-        AacEncoder currentEncoder = encoder;
-        encoder = null;
-        if (currentEncoder != null) currentEncoder.close();
-
-        AacHttpServer currentServer = server;
-        server = null;
-        if (currentServer != null) currentServer.close();
+        stopMonitor();
+        stopRuntime();
 
         lastPcmNs = 0;
         streamIp = null;
         host = null;
     }
 
-    private static String rootMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current.getCause() != null && current.getCause() != current) {
-            current = current.getCause();
+    private void stopMonitor() {
+        ScheduledExecutorService currentMonitor = monitor;
+        monitor = null;
+        if (currentMonitor != null) currentMonitor.shutdownNow();
+    }
+
+    private void stopRuntime() {
+        closeCapture();
+        closeEncoder();
+        closeServer();
+    }
+
+    private void closeCapture() {
+        AudioCapture currentCapture = capture;
+        capture = null;
+        if (currentCapture != null) currentCapture.close();
+    }
+
+    private void closeEncoder() {
+        AacEncoder currentEncoder = encoder;
+        encoder = null;
+        if (currentEncoder != null) currentEncoder.close();
+    }
+
+    private void closeServer() {
+        AacHttpServer currentServer = server;
+        server = null;
+        if (currentServer != null) currentServer.close();
+    }
+
+    private static final class RuntimeStatus {
+        final String message;
+        final boolean error;
+        final boolean audioActive;
+        final int clients;
+
+        RuntimeStatus(String message, boolean error, boolean audioActive, int clients) {
+            this.message = message;
+            this.error = error;
+            this.audioActive = audioActive;
+            this.clients = clients;
         }
-        String message = current.getMessage();
-        return current.getClass().getSimpleName()
-                + (message == null || message.isEmpty() ? "" : ": " + message);
+
+        static RuntimeStatus error(String message, boolean audioActive, int clients) {
+            return new RuntimeStatus(message, true, audioActive, clients);
+        }
     }
 }

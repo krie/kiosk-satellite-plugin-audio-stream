@@ -6,11 +6,10 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 
 /**
- * Own microphone capture for the plugin.
+ * Captures microphone PCM without relying on Kiosk Satellite implementation classes.
  * <p>
- * This deliberately does not depend on Kiosk Satellite implementation classes.
- * Keep KS wake-word/clap/RTSP-audio capture disabled while this plugin is active
- * so there is exactly one AudioRecord session using the microphone.
+ * The plugin owns one {@link AudioRecord} session, so other Kiosk Satellite microphone
+ * features must stay disabled while this capture is active.
  */
 final class AudioCapture implements AutoCloseable {
     interface PcmConsumer {
@@ -21,6 +20,13 @@ final class AudioCapture implements AutoCloseable {
     static final int CHANNELS = 1;
     static final int BYTES_PER_SAMPLE = 2;
     static final int BYTES_PER_SECOND = SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE;
+    // A larger AudioRecord buffer absorbs scheduling jitter; smaller chunks keep the stream live.
+    private static final int MIN_BUFFER_MILLIS = 200;
+    private static final int CAPTURE_CHUNK_MILLIS = 40;
+    private static final int MIN_BUFFER_BYTES =
+            BYTES_PER_SECOND * MIN_BUFFER_MILLIS / 1000;
+    private static final int CAPTURE_CHUNK_BYTES =
+            BYTES_PER_SECOND * CAPTURE_CHUNK_MILLIS / 1000;
 
     private final PcmConsumer consumer;
     private volatile boolean running;
@@ -45,7 +51,7 @@ final class AudioCapture implements AutoCloseable {
             throw new IllegalStateException("AudioRecord does not support 48 kHz mono PCM16");
         }
 
-        int bufferBytes = Math.max(minBuffer * 2, SAMPLE_RATE * BYTES_PER_SAMPLE / 5); // >= 200 ms
+        int bufferBytes = Math.max(minBuffer * 2, MIN_BUFFER_BYTES);
         AudioFormat format = new AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(SAMPLE_RATE)
@@ -75,8 +81,7 @@ final class AudioCapture implements AutoCloseable {
     }
 
     private void captureLoop() {
-        // 40 ms chunks: 48,000 samples/s * 2 bytes * 0.04 s = 3,840 bytes.
-        byte[] buffer = new byte[3840];
+        byte[] buffer = new byte[CAPTURE_CHUNK_BYTES];
         try {
             while (running) {
                 AudioRecord current = record;
@@ -103,7 +108,7 @@ final class AudioCapture implements AutoCloseable {
                 }
             }
         } catch (Throwable t) {
-            if (running) error = rootMessage(t);
+            if (running) error = FailureMessages.rootCause(t);
         } finally {
             running = false;
         }
@@ -141,12 +146,4 @@ final class AudioCapture implements AutoCloseable {
         if (currentWorker != null) currentWorker.interrupt();
     }
 
-    private static String rootMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current.getCause() != null && current.getCause() != current)
-            current = current.getCause();
-        String message = current.getMessage();
-        return current.getClass().getSimpleName()
-                + (message == null || message.isEmpty() ? "" : ": " + message);
-    }
 }
